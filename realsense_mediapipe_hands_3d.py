@@ -7,9 +7,6 @@ import pyrealsense2 as rs
 import mediapipe as mp
 
 
-# ===============================
-# 工具函数
-# ===============================
 def clamp(v: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, v))
 
@@ -52,7 +49,7 @@ def pixel_to_3d(
 # ===============================
 mp_hands = mp.solutions.hands
 HAND_POINTS = {
-    "palm": mp_hands.HandLandmark.WRIST,
+    "wrist": mp_hands.HandLandmark.WRIST,
     "thumb": mp_hands.HandLandmark.THUMB_TIP,
     "index": mp_hands.HandLandmark.INDEX_FINGER_TIP,
     "middle": mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
@@ -61,9 +58,6 @@ HAND_POINTS = {
 }
 
 
-# ===============================
-# 主程序
-# ===============================
 def main():
     # ---------- RealSense ----------
     pipeline = rs.pipeline()
@@ -125,9 +119,9 @@ def main():
 
             if result.multi_hand_landmarks:
                 for hi, hand_lms in enumerate(result.multi_hand_landmarks):
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        output, hand_lms, mp_hands.HAND_CONNECTIONS
-                    )
+                    # mp.solutions.drawing_utils.draw_landmarks(
+                    #     output, hand_lms, mp_hands.HAND_CONNECTIONS
+                    # )
 
                     one_hand = {}
 
@@ -180,8 +174,6 @@ def main():
                     for i, h3d in enumerate(hands_3d):
                         ordered = {k: h3d.get(k) for k in HAND_POINTS.keys()}
                         print(f"[Hand {i+1}] {ordered}")
-                else:
-                    print("[No hands]")
 
             key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord("q"):
