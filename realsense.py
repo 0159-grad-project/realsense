@@ -1,4 +1,3 @@
-import time
 from typing import Dict, Tuple, List
 
 import cv2
@@ -44,9 +43,7 @@ def pixel_to_3d(
     return float(X), float(Y), float(Z)
 
 
-# ===============================
 # MediaPipe 手部关键点定义
-# ===============================
 mp_hands = mp.solutions.hands
 HAND_POINTS = {
     "wrist": mp_hands.HandLandmark.WRIST,
@@ -125,7 +122,7 @@ def main():
 
                     one_hand = {}
 
-                    for name, lm_id in HAND_POINTS.items():
+                    for i, (name, lm_id) in enumerate(HAND_POINTS.items()):
                         lm = hand_lms.landmark[int(lm_id)]
 
                         px = clamp(int(lm.x * w), 0, w - 1)
@@ -134,16 +131,16 @@ def main():
                         z = depth_at_pixel_robust(df, px, py, r=2)
 
                         if z <= 0.0:
-                            cv2.circle(output, (px, py), 6, (0, 0, 255), -1)
+                            cv2.circle(output, (px, py), 4, (0, 0, 255), -1)
                             continue
 
                         X, Y, Z = pixel_to_3d(intr, px, py, z)
                         one_hand[name] = (X, Y, Z)
 
-                        cv2.circle(output, (px, py), 6, (0, 255, 0), -1)
+                        cv2.circle(output, (px, py), 4, (0, 255, 0), -1)
                         cv2.putText(
                             output,
-                            f"{name}: {Z:.2f}m",
+                            f"{i}",  # f"{name}: {Z:.2f}m",
                             (px + 6, py - 6),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.45,
@@ -154,26 +151,13 @@ def main():
                     if one_hand:
                         hands_3d.append(one_hand)
 
-                    cv2.putText(
-                        output,
-                        f"Hand {hi+1}",
-                        (10, 30 + hi * 30),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.9,
-                        (255, 255, 255),
-                        2,
-                    )
+            cv2.imshow("RealSense Hands (6-point 3D)", output)
 
-            cv2.imshow("RealSense + MediaPipe Hands (6-point 3D)", output)
-
-            # ---------- 控制台输出（5Hz） ----------
-            now = time.time()
-            if now - last_print > 0.2:
-                last_print = now
-                if hands_3d:
-                    for i, h3d in enumerate(hands_3d):
-                        ordered = {k: h3d.get(k) for k in HAND_POINTS.keys()}
-                        print(f"[Hand {i+1}] {ordered}")
+            # ---------- 控制台输出 ----------
+            if hands_3d:
+                for i, h3d in enumerate(hands_3d):
+                    ordered = {k: h3d.get(k) for k in HAND_POINTS.keys()}
+                    print(f"[Hand {i+1}] {ordered}")
 
             key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord("q"):
