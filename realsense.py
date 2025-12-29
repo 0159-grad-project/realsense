@@ -18,7 +18,7 @@ def depth_at_pixel_robust(
     min_valid: float = 1e-6,
     max_valid: float = 10.0,
 ) -> float:
-    """在 (x,y) 周围取邻域平均深度，返回米"""
+    """在 (x,y) 周围取5x5邻域平均深度，返回米"""
     vp = depth_frame.profile.as_video_stream_profile()
     w = vp.width()
     h = vp.height()
@@ -35,10 +35,10 @@ def depth_at_pixel_robust(
     return sum(vals) / len(vals) if vals else 0.0
 
 
+# 把图片上的像素坐标和深度值转换为相机坐标系下的 3D 坐标（米）
 def pixel_to_3d(
     intr: rs.intrinsics, x: int, y: int, z_m: float
 ) -> Tuple[float, float, float]:
-    """像素 + 深度 → 相机坐标系 3D（米）"""
     X, Y, Z = rs.rs2_deproject_pixel_to_point(intr, [float(x), float(y)], z_m)
     return float(X), float(Y), float(Z)
 
@@ -66,12 +66,12 @@ def main():
     align = rs.align(rs.stream.color)
 
     # 深度滤波（稳定用）
-    dec = rs.decimation_filter()
-    spat = rs.spatial_filter()
-    temp = rs.temporal_filter()
-    hole = rs.hole_filling_filter()
+    dec = rs.decimation_filter()  # 降采样/减小噪声
+    spat = rs.spatial_filter()  # 空间滤波
+    temp = rs.temporal_filter()  # 时间滤波
+    hole = rs.hole_filling_filter()  # 填充空洞
 
-    # ---------- MediaPipe ----------
+    # ---------- MediaPipe Hands 初始化 ----------
     hands = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=2,
@@ -81,8 +81,6 @@ def main():
     )
 
     print("Running...  ESC / q 退出")
-
-    last_print = 0.0
 
     try:
         while True:
@@ -94,13 +92,13 @@ def main():
             if not depth_frame or not color_frame:
                 continue
 
-            # ---------- 深度滤波并强制转回 depth_frame ----------
+            # ---------- 深度滤波 ----------
             df = depth_frame
             df = dec.process(df)
             df = spat.process(df)
             df = temp.process(df)
             df = hole.process(df)
-            df = df.as_depth_frame()  # 🔑 必须
+            depth_frame = df.as_depth_frame()
 
             color_img = np.asanyarray(color_frame.get_data())
             h, w = color_img.shape[:2]
@@ -128,7 +126,7 @@ def main():
                         px = clamp(int(lm.x * w), 0, w - 1)
                         py = clamp(int(lm.y * h), 0, h - 1)
 
-                        z = depth_at_pixel_robust(df, px, py, r=2)
+                        z = depth_at_pixel_robust(depth_frame, px, py, r=2)
 
                         if z <= 0.0:
                             cv2.circle(output, (px, py), 4, (0, 0, 255), -1)

@@ -5,7 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="43724ac4-0357-46dd-b1fc-f16ad8fb6a99" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/realsense_mediapipe_hands_3d.py" beforeDir="false" afterPath="$PROJECT_DIR$/realsense_mediapipe_hands_3d.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/realsense.py" beforeDir="false" afterPath="$PROJECT_DIR$/realsense.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -15,9 +15,9 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 2
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2
+}</component>
   <component name="ProjectId" id="37LZQ7uk07WbrB8nwTWcgXsAfBb" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -28,6 +28,7 @@
     "Python.main.executor": "Run",
     "Python.realsense_mediapipe_hands_3d.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
     "last_opened_file_path": "C:/Users/13917/Desktop/realsense",
     "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
