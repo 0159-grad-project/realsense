@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Tuple, List
 
 import cv2
@@ -54,6 +55,25 @@ HAND_POINTS = {
     "pinky": mp_hands.HandLandmark.PINKY_TIP,
 }
 
+def format_log_line(
+    ts_ns: int,
+    records: List[Tuple[int, int, float, float, float, float]],
+) -> str:
+    """
+    records: [(px,py,z,X,Y,Z), ...] length=6
+    输出：timestamp_ns, px,py,z,X,Y,Z, ... 共 1+6*6 列
+    """
+    parts = [str(ts_ns)]
+    for (px, py, z, X, Y, Z) in records:
+        parts.extend([
+            str(int(px)),
+            str(int(py)),
+            f"{z:.16f}",
+            f"{X:.16f}",
+            f"{Y:.16f}",
+            f"{Z:.16f}",
+        ])
+    return ",".join(parts) + "\n"
 
 def main():
     # ---------- RealSense ----------
@@ -74,7 +94,7 @@ def main():
     # ---------- MediaPipe Hands 初始化 ----------
     hands = mp_hands.Hands(
         static_image_mode=False,
-        max_num_hands=2,
+        max_num_hands=1,
         model_complexity=1,
         min_detection_confidence=0.6,
         min_tracking_confidence=0.6,
@@ -82,84 +102,100 @@ def main():
 
     print("Running...  ESC / q 退出")
 
+    # 行缓冲写入（减少磁盘开销）
+    buf: List[str] = []
+    flush_every_n = 30  # 大约 1 秒写一次（30fps）
+    today = datetime.now().strftime("%Y%m%d")
+    log_path = f"./logs/{today}_realsense_log.txt"
+
     try:
-        while True:
-            frames = pipeline.wait_for_frames()
-            frames = align.process(frames)
+        with open(log_path, "w", encoding="utf-8") as f:
+            while True:
+                frames = pipeline.wait_for_frames()
+                frames = align.process(frames)
 
-            depth_frame = frames.get_depth_frame()
-            color_frame = frames.get_color_frame()
-            if not depth_frame or not color_frame:
-                continue
+                depth_frame = frames.get_depth_frame()
+                color_frame = frames.get_color_frame()
+                if not depth_frame or not color_frame:
+                    continue
 
-            # ---------- 深度滤波 ----------
-            df = depth_frame
-            df = dec.process(df)
-            df = spat.process(df)
-            df = temp.process(df)
-            df = hole.process(df)
-            depth_frame = df.as_depth_frame()
+                # ---------- 深度滤波 ----------
+                df = depth_frame
+                df = dec.process(df)
+                df = spat.process(df)
+                df = temp.process(df)
+                df = hole.process(df)
+                depth_frame = df.as_depth_frame()
 
-            color_img = np.asanyarray(color_frame.get_data())
-            h, w = color_img.shape[:2]
+                color_img = np.asanyarray(color_frame.get_data())
+                h, w = color_img.shape[:2]
 
-            intr = color_frame.profile.as_video_stream_profile().intrinsics
+                intr = color_frame.profile.as_video_stream_profile().intrinsics
 
-            # ---------- MediaPipe ----------
-            rgb = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
-            result = hands.process(rgb)
+                # ---------- MediaPipe ----------
+                rgb = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
+                result = hands.process(rgb)
 
-            output = color_img.copy()
-            hands_3d: List[Dict[str, Tuple[float, float, float]]] = []
+                output = color_img.copy()
 
-            if result.multi_hand_landmarks:
-                for hi, hand_lms in enumerate(result.multi_hand_landmarks):
-                    # mp.solutions.drawing_utils.draw_landmarks(
-                    #     output, hand_lms, mp_hands.HAND_CONNECTIONS
-                    # )
+                if result.multi_hand_landmarks:
+                    for hi, hand_lms in enumerate(result.multi_hand_landmarks):
+                        # mp.solutions.drawing_utils.draw_landmarks(
+                        #     output, hand_lms, mp_hands.HAND_CONNECTIONS
+                        # )
 
-                    one_hand = {}
+                        records: List[Tuple[int, int, float, float, float, float]] = []
+                        all_valid = True
 
-                    for i, (name, lm_id) in enumerate(HAND_POINTS.items()):
-                        lm = hand_lms.landmark[int(lm_id)]
+                        for i, (name, lm_id) in enumerate(HAND_POINTS.items()):
+                            lm = hand_lms.landmark[int(lm_id)]
 
-                        px = clamp(int(lm.x * w), 0, w - 1)
-                        py = clamp(int(lm.y * h), 0, h - 1)
+                            px = clamp(int(lm.x * w), 0, w - 1)
+                            py = clamp(int(lm.y * h), 0, h - 1)
 
-                        z = depth_at_pixel_robust(depth_frame, px, py, r=2)
+                            z = depth_at_pixel_robust(depth_frame, px, py, r=2)
 
-                        if z <= 0.0:
-                            cv2.circle(output, (px, py), 4, (0, 0, 255), -1)
-                            continue
+                            if z <= 0.0:
+                                all_valid = False
+                                cv2.circle(output, (px, py), 4, (0, 0, 255), -1)
+                                cv2.putText(
+                                    output, f"{i}", (px + 6, py - 6),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1
+                                )
+                                continue
 
-                        X, Y, Z = pixel_to_3d(intr, px, py, z)
-                        one_hand[name] = (X, Y, Z)
+                            X, Y, Z = pixel_to_3d(intr, px, py, z)
+                            records.append((px, py, z, X, Y, Z))
 
-                        cv2.circle(output, (px, py), 4, (0, 255, 0), -1)
-                        cv2.putText(
-                            output,
-                            f"{i}",  # f"{name}: {Z:.2f}m",
-                            (px + 6, py - 6),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.45,
-                            (0, 255, 0),
-                            1,
-                        )
+                            cv2.circle(output, (px, py), 4, (0, 255, 0), -1)
+                            cv2.putText(
+                                output,
+                                f"{i}",  # f"{name}: {Z:.2f}m",
+                                (px + 6, py - 6),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.45,
+                                (0, 255, 0),
+                                1,
+                            )
+                        
+                    if all_valid and len(records) == 6:
+                        ts_ns = int(color_frame.get_timestamp() * 1_000_000)
+                        buf.append(format_log_line(ts_ns, records))
 
-                    if one_hand:
-                        hands_3d.append(one_hand)
+                        if len(buf) >= flush_every_n:
+                            f.writelines(buf)
+                            f.flush()
+                            buf.clear()
 
-            cv2.imshow("RealSense Hands (6-point 3D)", output)
+                cv2.imshow("RealSense Hands (6-point 3D)", output)
 
-            # ---------- 控制台输出 ----------
-            if hands_3d:
-                for i, h3d in enumerate(hands_3d):
-                    ordered = {k: h3d.get(k) for k in HAND_POINTS.keys()}
-                    print(f"[Hand {i+1}] {ordered}")
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27 or key == ord("q"):
+                    break
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == 27 or key == ord("q"):
-                break
+            if buf:
+                f.writelines(buf)
+                f.flush()
 
     finally:
         hands.close()
