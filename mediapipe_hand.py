@@ -6,7 +6,7 @@ import pyrealsense2 as rs
 import mediapipe as mp
 
 
-HandRecord = Tuple[int, int, float, float, float, float]
+HandRecord = Tuple[float, float, float]
 HandRecords = List[HandRecord]
 PixelDepths = List[Tuple[int, int, float]]
 
@@ -85,13 +85,13 @@ class MediaPipeHandDetector:
         rgb = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
         result = self._hands.process(rgb)
 
-        h, w = color_img.shape[:2]
-        pixel_depths: PixelDepths = []
-        records: HandRecords = []
+        h, w = color_img.shape[:2]  # (480, 640, 3)
+        img_xyz: PixelDepths = []
+        world_xyz: HandRecords = []
         all_valid = True
 
         if not result.multi_hand_landmarks:
-            return pixel_depths, records, False
+            return img_xyz, world_xyz, False
 
         hand_lms = result.multi_hand_landmarks[0]
 
@@ -101,13 +101,15 @@ class MediaPipeHandDetector:
             px = clamp(int(lm.x * w), 0, w - 1)
             py = clamp(int(lm.y * h), 0, h - 1)
 
-            z = depth_at_pixel_robust(depth_frame, px, py, r=1)
-            pixel_depths.append((px, py, z))
+            # z = depth_at_pixel_robust(depth_frame, px, py, r=1)
+            # print(px, py, depth_frame.get_width(), depth_frame.get_height())
+            z = depth_frame.get_distance(px, py)
+            img_xyz.append((px, py, z))
 
             if z <= 0.0:
                 all_valid = False
 
             X, Y, Z = pixel_to_3d(intr, px, py, z)
-            records.append((px, py, z, X, Y, Z))
+            world_xyz.append((X, Y, Z))
 
-        return pixel_depths, records, bool(all_valid and len(records) == len(HAND_POINTS))
+        return img_xyz, world_xyz, bool(all_valid and len(world_xyz) == len(HAND_POINTS))

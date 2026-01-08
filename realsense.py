@@ -10,19 +10,16 @@ from mediapipe_hand import MediaPipeHandDetector, HandRecords
 
 def format_log_line(
     ts_ns: int,
-    records: HandRecords,
+    world_xyz: HandRecords,
 ) -> str:
     """
-    records: [(px,py,z,X,Y,Z), ...] length=6
-    输出：timestamp_ns, px,py,z,X,Y,Z, ... 共 1+6*6 列
+    world_xyz: [(X,Y,Z), ...] length=3
+    输出：timestamp_ns, X,Y,Z, ... 共 1+3*3 列
     """
     parts = [str(ts_ns)]
-    for (px, py, z, X, Y, Z) in records:
+    for (X, Y, Z) in world_xyz:
         parts.extend(
             [
-                str(int(px)),
-                str(int(py)),
-                f"{z:.16f}",
                 f"{X:.16f}",
                 f"{Y:.16f}",
                 f"{Z:.16f}",
@@ -41,7 +38,7 @@ def main():
     align = rs.align(rs.stream.color)
 
     # 深度滤波（稳定用）
-    dec = rs.decimation_filter()  # 降采样/减小噪声
+    dec = rs.decimation_filter()  # 降采样/减小噪声（会改尺寸！）
     spat = rs.spatial_filter()  # 空间滤波
     temp = rs.temporal_filter()  # 时间滤波
     hole = rs.hole_filling_filter()  # 填充空洞
@@ -53,8 +50,9 @@ def main():
     # 行缓冲写入（减少磁盘开销）
     buf: List[str] = []
     flush_every_n = 30  # 大约 1 秒写一次（30fps）
-    today = datetime.now().strftime("%Y%m%d%H%M")
-    log_path = f"./logs/{today}_realsense_log.txt"
+    date = datetime.now().strftime("%m%d")
+    time = datetime.now().strftime("%H%M")
+    log_path = f"./logs/{date}_{time}_realsense_log.txt"
 
     try:
         with open(log_path, "w", encoding="utf-8") as f:
@@ -68,28 +66,28 @@ def main():
                     continue
 
                 # ---------- 深度滤波 ----------
-                df = depth_frame
-                df = dec.process(df)
-                df = spat.process(df)
-                df = temp.process(df)
-                df = hole.process(df)
-                depth_frame = df.as_depth_frame()
+                # df = depth_frame
+                # df = dec.process(df)
+                # df = spat.process(df)
+                # df = temp.process(df)
+                # df = hole.process(df)
+                # depth_frame = df.as_depth_frame()
 
                 color_img = np.asanyarray(color_frame.get_data())
 
                 intr = color_frame.profile.as_video_stream_profile().intrinsics
 
-                pixel_depths, records, all_valid = hand_detector.process(
+                img_xyz, world_xyz, all_valid = hand_detector.process(
                     color_img, depth_frame, intr
                 )
 
                 output = color_img.copy()
-                for i, (px, py, z) in enumerate(pixel_depths):
+                for i, (px, py, z) in enumerate(img_xyz):
                     color = (0, 255, 0) if z > 0 else (0, 0, 255)
                     cv2.circle(output, (px, py), 4, color, -1)
                     cv2.putText(
                         output,
-                        f"{i}",
+                        f"{z:.2f}",
                         (px + 6, py - 6),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.45,
@@ -99,7 +97,7 @@ def main():
 
                 if all_valid:
                     ts_ns = int(color_frame.get_timestamp() * 1_000_000)
-                    buf.append(format_log_line(ts_ns, records))
+                    buf.append(format_log_line(ts_ns, world_xyz))
 
                     if len(buf) >= flush_every_n:
                         f.writelines(buf)
