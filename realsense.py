@@ -96,8 +96,8 @@ def main():
                     )
 
                 if all_valid:
-                    ts_ns = int(color_frame.get_timestamp() * 1_000_000)
-                    buf.append(format_log_line(ts_ns, world_xyz))
+                    ts_ms = int(color_frame.get_timestamp())
+                    buf.append(format_log_line(ts_ms, world_xyz))
 
                     if len(buf) >= flush_every_n:
                         f.writelines(buf)
