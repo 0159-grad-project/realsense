@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -9,6 +9,7 @@ import mediapipe as mp
 HandRecord = Tuple[float, float, float]
 HandRecords = List[HandRecord]
 PixelDepths = List[Tuple[int, int, float]]
+LandmarkList = List[mp.solutions.hands.HandLandmark]
 
 
 def clamp(v: int, lo: int, hi: int) -> int:
@@ -46,6 +47,9 @@ def pixel_to_3d(intr: rs.intrinsics, x: int, y: int, z_m: float) -> Tuple[float,
 
 
 mp_hands = mp.solutions.hands
+HAND_LANDMARKS: LandmarkList = list(mp_hands.HandLandmark)
+NUM_LANDMARKS = len(HAND_LANDMARKS)
+
 HAND_POINTS = {
     "wrist": mp_hands.HandLandmark.WRIST,
     "thumb": mp_hands.HandLandmark.THUMB_TIP,
@@ -95,7 +99,7 @@ class MediaPipeHandDetector:
 
         hand_lms = result.multi_hand_landmarks[0]
 
-        for lm_id in HAND_POINTS.values():
+        for lm_id in HAND_LANDMARKS:
             lm = hand_lms.landmark[int(lm_id)]
 
             px = clamp(int(lm.x * w), 0, w - 1)
@@ -112,4 +116,4 @@ class MediaPipeHandDetector:
             X, Y, Z = pixel_to_3d(intr, px, py, z)
             world_xyz.append((X, Y, Z))
 
-        return img_xyz, world_xyz, bool(all_valid and len(world_xyz) == len(HAND_POINTS))
+        return img_xyz, world_xyz, bool(all_valid and len(world_xyz) == NUM_LANDMARKS)
