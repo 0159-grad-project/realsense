@@ -1,6 +1,5 @@
 import os
-from datetime import datetime
-from typing import List, Tuple
+from typing import List
 
 import cv2
 import numpy as np
@@ -17,7 +16,7 @@ def format_log_line(
     """
     img_xyz: [(px, py, z_m), ...] length=21
     world_xyz: [(X,Y,Z), ...] length=21
-    输出：timestamp_ms, px,py,z_m,X,Y,Z, ... 共 1 + 21*6 列
+    Output: timestamp_ms, px,py,z_m,X,Y,Z, ... total 1 + 21*6 columns
     """
     parts = [str(ts_ms)]
     for (px, py, z), (X, Y, Z) in zip(img_xyz, world_xyz):
@@ -34,63 +33,61 @@ def format_log_line(
     return ",".join(parts) + "\n"
 
 
-def main():
-    rgb_dir = f"./logs/rgb_videos"
-    bag_dir = f"./logs/raw_bags"
+def find_latest_bag(bag_dir: str) -> str:
+    if not os.path.isdir(bag_dir):
+        return ""
+    bags = [
+        os.path.join(bag_dir, name)
+        for name in os.listdir(bag_dir)
+        if name.lower().endswith(".bag")
+    ]
+    return max(bags, key=os.path.getmtime) if bags else ""
 
-    date = datetime.now().strftime("%m%d")
-    time = datetime.now().strftime("%H%M")
-    base_name = f"{date}_{time}"
-    log_path = f"./logs/{base_name}_realsense_log.txt"
-    color_video_path = f"{rgb_dir}/{base_name}_color.mp4"
-    # depth_preview_path = f"{rgb_dir}/{base_name}_depth_preview.mp4"
-    bag_path = f"{bag_dir}/{base_name}.bag"
 
-    # ---------- RealSense ----------
-    frame_width, frame_height, fps = 640, 480, 30
+def default_log_path(bag_path: str, out_dir: str) -> str:
+    base = os.path.splitext(os.path.basename(bag_path))[0]
+    return os.path.join(out_dir, f"{base}_realsense_log.txt")
+
+
+def main() -> None:
+    bag_path = "./logs/raw_bags/0108_1843.bag" or find_latest_bag("./logs/raw_bags")
+
+    log_path = "" or default_log_path(bag_path, "./logs_bag")
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
 
     pipeline = rs.pipeline()
     config = rs.config()
-    config.enable_stream(rs.stream.color, frame_width, frame_height, rs.format.bgr8, fps)
-    config.enable_stream(rs.stream.depth, frame_width, frame_height, rs.format.z16, fps)
-    config.enable_record_to_file(bag_path)
+    config.enable_device_from_file(bag_path, repeat_playback=False)
 
-    pipeline.start(config)
+    profile = pipeline.start(config)
+    playback = profile.get_device().as_playback()
+    playback.set_real_time(False)
+
     align = rs.align(rs.stream.color)
-    colorizer = rs.colorizer()
-
-    frame_size = (frame_width, frame_height)
-    color_writer = cv2.VideoWriter(color_video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
-    # depth_preview_writer = cv2.VideoWriter(depth_preview_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
-
     hand_detector = MediaPipeHandDetector()
 
-    print("Running...  ESC 退出")
-
-    # 行缓冲写入（减少磁盘开销）
     buf: List[str] = []
-    flush_every_n = 30  # 大约 1 秒写一次（30fps）
+    frame_count = 0
+    max_frames = 0
+    flush_every = 30
 
     try:
         with open(log_path, "w", encoding="utf-8") as f:
             while True:
-                frames = pipeline.wait_for_frames()
-                frames = align.process(frames)
+                try:
+                    frames = pipeline.wait_for_frames()
+                except RuntimeError:
+                    break
 
+                frames = align.process(frames)
                 depth_frame = frames.get_depth_frame()
                 color_frame = frames.get_color_frame()
                 if not depth_frame or not color_frame:
                     continue
 
                 color_img = np.asanyarray(color_frame.get_data())
-                if color_writer.isOpened():
-                    color_writer.write(color_img)
-
-                # depth_color_frame = colorizer.colorize(depth_frame)
-                # depth_colormap = np.asanyarray(depth_color_frame.get_data())
-                # if depth_preview_writer.isOpened():
-                #     depth_preview_writer.write(depth_colormap)
-
                 intr = color_frame.profile.as_video_stream_profile().intrinsics
 
                 img_xyz, world_xyz, all_valid = hand_detector.process(
@@ -98,7 +95,7 @@ def main():
                 )
 
                 output = color_img.copy()
-                if (len(img_xyz) == 21):
+                if len(img_xyz) == 21:
                     for i in [0, 4, 8, 12, 16, 20]:
                         for (px, py, z) in [img_xyz[i]]:
                             color = (0, 255, 0) if z > 0 else (0, 0, 255)
@@ -116,15 +113,18 @@ def main():
                     ts_ms = int(color_frame.get_timestamp())
                     buf.append(format_log_line(ts_ms, img_xyz, world_xyz))
 
-                    if len(buf) >= flush_every_n:
+                    if len(buf) >= flush_every:
                         f.writelines(buf)
                         f.flush()
                         buf.clear()
 
-                cv2.imshow("RealSense Hands (21-point 3D)", output)
-
+                cv2.imshow("RealSense Bag Hands (21-point 3D)", output)
                 key = cv2.waitKey(1) & 0xFF
                 if key == 27 or key == ord("q"):
+                    break
+
+                frame_count += 1
+                if max_frames and frame_count >= max_frames:
                     break
 
             if buf:
@@ -132,10 +132,8 @@ def main():
                 f.flush()
 
     finally:
-        if color_writer.isOpened():
-            color_writer.release()
-        # if depth_preview_writer.isOpened():
-        #     depth_preview_writer.release()
+        print("Done.")
+
         hand_detector.close()
         pipeline.stop()
         cv2.destroyAllWindows()
