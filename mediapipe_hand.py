@@ -5,10 +5,15 @@ import numpy as np
 import pyrealsense2 as rs
 import mediapipe as mp
 
+# ---------------------------------
+# MediaPipe 手部关键点检测 + RealSense 深度相机
+# 获取手部 21 个关键点的像素坐标、深度（米）和空间坐标（X,Y,Z，米）
+# ---------------------------------
 
-HandRecord = Tuple[float, float, float]
+
+HandRecord = Tuple[float, float, float] # 空间坐标
 HandRecords = List[HandRecord]
-PixelDepths = List[Tuple[int, int, float]]
+PixelDepths = List[Tuple[int, int, float]] # 二维图像坐标 + 深度
 LandmarkList = List[mp.solutions.hands.HandLandmark]
 
 
@@ -50,14 +55,14 @@ mp_hands = mp.solutions.hands
 HAND_LANDMARKS: LandmarkList = list(mp_hands.HandLandmark)
 NUM_LANDMARKS = len(HAND_LANDMARKS)
 
-HAND_POINTS = {
-    "wrist": mp_hands.HandLandmark.WRIST,
-    "thumb": mp_hands.HandLandmark.THUMB_TIP,
-    "index": mp_hands.HandLandmark.INDEX_FINGER_TIP,
-    "middle": mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
-    "ring": mp_hands.HandLandmark.RING_FINGER_TIP,
-    "pinky": mp_hands.HandLandmark.PINKY_TIP,
-}
+# HAND_POINTS = {
+#     "wrist": mp_hands.HandLandmark.WRIST,
+#     "thumb": mp_hands.HandLandmark.THUMB_TIP,
+#     "index": mp_hands.HandLandmark.INDEX_FINGER_TIP,
+#     "middle": mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
+#     "ring": mp_hands.HandLandmark.RING_FINGER_TIP,
+#     "pinky": mp_hands.HandLandmark.PINKY_TIP,
+# }
 
 
 class MediaPipeHandDetector:

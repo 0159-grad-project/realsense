@@ -2,6 +2,11 @@ import pyrealsense2 as rs
 import numpy as np
 import cv2
 
+# ---------------------------------
+# 相机测试用
+# RealSense 相机实时预览 RGB + Depth
+# ---------------------------------
+
 def main():
     # 1) 配置并启动
     pipeline = rs.pipeline()

@@ -5,6 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, Slider
 
+# ---------------------------------
+# 3D 可视化 RealSense + MediaPipe 手部关键点日志
+# ---------------------------------
+
+INPUT_PATH = ""
 
 HAND_EDGES: List[Tuple[int, int]] = [
     (0, 1),
@@ -102,8 +107,7 @@ def set_axes_limits(
 
 
 def main() -> None:
-    LOG_PATH = ""
-    log_path = LOG_PATH or find_latest_log("./logs_bag") or find_latest_log("./logs")
+    log_path = INPUT_PATH or find_latest_log("./logs_bag") or find_latest_log("./logs")
     if not log_path:
         raise SystemExit("No log file found. Provide a log path or put logs in ./logs_bag.")
 

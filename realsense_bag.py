@@ -7,6 +7,12 @@ import pyrealsense2 as rs
 
 from mediapipe_hand import MediaPipeHandDetector, HandRecords, PixelDepths
 
+# ---------------------------------
+# 从 RealSense .bag 文件中读取数据（其余逻辑和 realsense.py 一致）
+# 并使用 MediaPipe 检测手部关键点，记录 21 个关键点的像素坐标、深度（米）和空间坐标（X,Y,Z）
+# ---------------------------------
+
+BAG_PATH = "./logs/raw_bags/0108_1843.bag"
 
 def format_log_line(
     ts_ms: int,
@@ -50,7 +56,7 @@ def default_log_path(bag_path: str, out_dir: str) -> str:
 
 
 def main() -> None:
-    bag_path = "./logs/raw_bags/0108_1843.bag" or find_latest_bag("./logs/raw_bags")
+    bag_path = BAG_PATH or find_latest_bag("./logs/raw_bags")
 
     log_path = "" or default_log_path(bag_path, "./logs_bag")
     log_dir = os.path.dirname(log_path)

@@ -8,6 +8,11 @@ import pyrealsense2 as rs
 
 from mediapipe_hand import MediaPipeHandDetector, HandRecords, PixelDepths
 
+# ---------------------------------
+# RealSense 深度相机数据记录 + MediaPipe 手部关键点检测
+# 记录 21 个关键点的像素坐标、深度（米）和空间坐标（X,Y,Z）
+# 同时保存 RGB 视频和 .bag 文件
+# ---------------------------------
 
 def format_log_line(
     ts_ms: int,
