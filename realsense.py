@@ -14,6 +14,18 @@ from mediapipe_hand import MediaPipeHandDetector, HandRecords, PixelDepths
 # 同时保存 RGB 视频和 .bag 文件
 # ---------------------------------
 
+# ZeroMQ 发布配置
+ENABLE_PUB = True
+PUB_PORT = 5555
+PUB_TOPIC = b"realsense"
+RS_SEND_INDICES = [0, 4, 8, 12, 16, 20]
+RS_SEND_SCALE = 1000.0
+
+if ENABLE_PUB:
+    import msgpack
+    import zmq
+
+
 def format_log_line(
     ts_ms: int,
     img_xyz: PixelDepths,
@@ -70,6 +82,13 @@ def main():
 
     hand_detector = MediaPipeHandDetector()
 
+    pub = None
+    pub_ctx = None
+    if ENABLE_PUB:
+        pub_ctx = zmq.Context.instance()
+        pub = pub_ctx.socket(zmq.PUB)
+        pub.bind(f"tcp://*:{PUB_PORT}")
+
     print("Running...  ESC 退出")
 
     # 行缓冲写入（减少磁盘开销）
@@ -101,6 +120,7 @@ def main():
                 img_xyz, world_xyz, all_valid = hand_detector.process(
                     color_img, depth_frame, intr
                 )
+                ts_ms = int(color_frame.get_timestamp())
 
                 output = color_img.copy()
                 if (len(img_xyz) == 21):
@@ -118,13 +138,30 @@ def main():
                                 1,
                             )
 
-                    ts_ms = int(color_frame.get_timestamp())
                     buf.append(format_log_line(ts_ms, img_xyz, world_xyz))
 
                     if len(buf) >= flush_every_n:
                         f.writelines(buf)
                         f.flush()
                         buf.clear()
+
+                    if (ENABLE_PUB and pub is not None):
+                        send_pts = [
+                            [
+                                world_xyz[i][0] * RS_SEND_SCALE,
+                                world_xyz[i][1] * RS_SEND_SCALE,
+                                world_xyz[i][2] * RS_SEND_SCALE,
+                            ]
+                            for i in RS_SEND_INDICES
+                        ]
+                        payload = {
+                            "src": "realsense",
+                            "points": send_pts,
+                            "timestamp": ts_ms,
+                        }
+                        pub.send_multipart(
+                            [PUB_TOPIC, msgpack.packb(payload, use_bin_type=True)]
+                        )
 
                 cv2.imshow("RealSense Hands (21-point 3D)", output)
 
@@ -143,6 +180,10 @@ def main():
         #     depth_preview_writer.release()
         hand_detector.close()
         pipeline.stop()
+        if pub is not None:
+            pub.close(0)
+        if pub_ctx is not None:
+            pub_ctx.term()
         cv2.destroyAllWindows()
 
 
