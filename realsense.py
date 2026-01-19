@@ -156,7 +156,7 @@ def main():
                         ]
                         payload = {
                             "src": "realsense",
-                            "points": send_pts,
+                            "markers": send_pts,
                             "timestamp": ts_ms,
                         }
                         pub.send_multipart(
