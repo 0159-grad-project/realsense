@@ -98,6 +98,7 @@ class MediaPipeHandDetector:
         img_xyz: PixelDepths = []
         world_xyz: HandRecords = []
         all_valid = True
+        depths: List[float] = []
 
         if not result.multi_hand_landmarks:
             return img_xyz, world_xyz, False
@@ -114,11 +115,15 @@ class MediaPipeHandDetector:
             # print(px, py, depth_frame.get_width(), depth_frame.get_height())
             z = depth_frame.get_distance(px, py)
             img_xyz.append((px, py, z))
+            depths.append(z)
 
             if z <= 0.0:
                 all_valid = False
 
             X, Y, Z = pixel_to_3d(intr, px, py, z)
             world_xyz.append((X, Y, Z))
+
+        if depths and (max(depths) - min(depths)) > 0.3:
+            all_valid = False
 
         return img_xyz, world_xyz, bool(all_valid and len(world_xyz) == NUM_LANDMARKS)

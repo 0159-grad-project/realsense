@@ -14,8 +14,10 @@ from mediapipe_hand import MediaPipeHandDetector, HandRecords, PixelDepths
 # 同时保存 RGB 视频和 .bag 文件
 # ---------------------------------
 
+ENABLE_RECORDING = True  # 是否保存视频和 .bag 文件
+ENABLE_PUB = False  # 是否启用 ZeroMQ
+
 # ZeroMQ 发布配置
-ENABLE_PUB = True
 PUB_PORT = 5555
 PUB_TOPIC = b"realsense"
 RS_SEND_INDICES = [0, 4, 8, 12, 16, 20]
@@ -70,15 +72,20 @@ def main():
     config = rs.config()
     config.enable_stream(rs.stream.color, frame_width, frame_height, rs.format.bgr8, fps)
     config.enable_stream(rs.stream.depth, frame_width, frame_height, rs.format.z16, fps)
-    config.enable_record_to_file(bag_path)
+    if ENABLE_RECORDING:
+        config.enable_record_to_file(bag_path)
 
     pipeline.start(config)
     align = rs.align(rs.stream.color)
     colorizer = rs.colorizer()
 
     frame_size = (frame_width, frame_height)
-    color_writer = cv2.VideoWriter(color_video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
-    # depth_preview_writer = cv2.VideoWriter(depth_preview_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
+    color_writer = None
+    if ENABLE_RECORDING:
+        color_writer = cv2.VideoWriter(
+            color_video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size
+        )
+        # depth_preview_writer = cv2.VideoWriter(depth_preview_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
 
     hand_detector = MediaPipeHandDetector()
 
@@ -107,7 +114,7 @@ def main():
                     continue
 
                 color_img = np.asanyarray(color_frame.get_data())
-                if color_writer.isOpened():
+                if color_writer is not None and color_writer.isOpened():
                     color_writer.write(color_img)
 
                 # depth_color_frame = colorizer.colorize(depth_frame)
@@ -123,7 +130,7 @@ def main():
                 ts_ms = int(color_frame.get_timestamp())
 
                 output = color_img.copy()
-                if (len(img_xyz) == 21):
+                if (len(img_xyz) == 21 and all_valid):
                     for i in [0, 4, 8, 12, 16, 20]:
                         for (px, py, z) in [img_xyz[i]]:
                             color = (0, 255, 0) if z > 0 else (0, 0, 255)
@@ -174,7 +181,7 @@ def main():
                 f.flush()
 
     finally:
-        if color_writer.isOpened():
+        if color_writer is not None and color_writer.isOpened():
             color_writer.release()
         # if depth_preview_writer.isOpened():
         #     depth_preview_writer.release()
