@@ -28,8 +28,8 @@ RS_SEND_INDICES_TWO = HAND_DRAW_INDICES + RIGHT_DRAW_INDICES
 RS_SEND_INDICES = RS_SEND_INDICES_TWO if MAX_NUM_HANDS == 2 else RS_SEND_INDICES_ONE
 RS_SEND_SCALE = 1000.0
 
-LEFT_COLOR = (0, 255, 0)
-RIGHT_COLOR = (255, 0, 0)
+LEFT_COLOR = (0, 255, 0)  # 绿色
+RIGHT_COLOR = (255, 0, 0)  # 蓝色
 
 if ENABLE_PUB:
     import msgpack
@@ -45,22 +45,22 @@ def format_log_line(
     输出：timestamp_ms, px,py,z_m,X,Y,Z, ... 共 1 + N*6 列
     """
     parts = [str(ts_ms)]
-    for px, py, z, X, Y, Z in records:
-        parts.extend(
-            [
-                str(px),
-                str(py),
-                f"{z:.6f}",
-                f"{X:.16f}",
-                f"{Y:.16f}",
-                f"{Z:.16f}",
-            ]
-        )
+    for record in records:
+        if record is None:
+            parts.extend(["nan"] * 6)
+        else:
+            px, py, z, X, Y, Z = record
+            parts.extend(
+                [
+                    str(px),
+                    str(py),
+                    f"{z:.6f}",
+                    f"{X:.16f}",
+                    f"{Y:.16f}",
+                    f"{Z:.16f}",
+                ]
+            )
     return ",".join(parts) + "\n"
-
-
-def _empty_hand_points() -> HandRecords:
-    return [(0, 0, 0.0, 0.0, 0.0, 0.0)] * 21
 
 
 def _merge_hands(
@@ -70,12 +70,12 @@ def _merge_hands(
     left_valid = bool(left is not None and left.valid)
     right_valid = bool(right is not None and right.valid)
 
-    left_records = _empty_hand_points()
-    right_records = _empty_hand_points()
+    left_records = [None] * 21
+    right_records = [None] * 21
 
-    if left_valid:
+    if left is not None:
         left_records = left.records
-    if right_valid:
+    if right is not None:
         right_records = right.records
 
     records = left_records + right_records
@@ -96,6 +96,7 @@ def main():
 
     # ---------- RealSense ----------
     frame_width, frame_height, fps = 640, 480, 30
+    # frame_width, frame_height, fps = 1280, 720, 30
 
     pipeline = rs.pipeline()
     config = rs.config()
@@ -114,7 +115,6 @@ def main():
         color_writer = cv2.VideoWriter(
             color_video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size
         )
-        # depth_preview_writer = cv2.VideoWriter(depth_preview_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
 
     hand_detector = MediaPipeHandDetector(max_num_hands=MAX_NUM_HANDS)
 
@@ -153,7 +153,8 @@ def main():
 
                 intr = color_frame.profile.as_video_stream_profile().intrinsics
 
-                left_hand, right_hand = hand_detector.process(color_img, depth_frame, intr)
+                # 因画面有翻转，左右手需交换
+                right_hand, left_hand = hand_detector.process(color_img, depth_frame, intr)
                 ts_ms = int(color_frame.get_timestamp())
 
                 output = color_img.copy()
@@ -161,15 +162,12 @@ def main():
                     records, left_valid, right_valid = _merge_hands(
                         left_hand, right_hand
                     )
-                    has_valid = left_valid or right_valid
-                    if has_valid:
-                        for indices, color, enabled in (
-                            (HAND_DRAW_INDICES, LEFT_COLOR, left_valid),
-                            (RIGHT_DRAW_INDICES, RIGHT_COLOR, right_valid),
-                        ):
-                            if not enabled:
-                                continue
-                            for i in indices:
+                    for indices, color in (
+                        (HAND_DRAW_INDICES, LEFT_COLOR),
+                        (RIGHT_DRAW_INDICES, RIGHT_COLOR),
+                    ):
+                        for i in indices:
+                            if records[i] is not None:
                                 px, py, z, _, _, _ = records[i]
                                 draw_color = color if z > 0 else (0, 0, 255)
                                 cv2.circle(output, (px, py), 4, draw_color, -1)
@@ -182,7 +180,7 @@ def main():
                                     draw_color,
                                     1,
                                 )
-
+                    if left_valid or right_valid:
                         buf.append(format_log_line(ts_ms, records))
 
                         if len(buf) >= flush_every_n:
@@ -209,7 +207,7 @@ def main():
                             )
                 else:
                     hand = left_hand if left_hand is not None else right_hand
-                    if hand is not None and hand.valid:
+                    if hand is not None:
                         records = hand.records
                         for i in HAND_DRAW_INDICES:
                             px, py, z, _, _, _ = records[i]
@@ -225,30 +223,31 @@ def main():
                                 1,
                             )
 
-                        buf.append(format_log_line(ts_ms, records))
+                        if hand.valid:
+                            buf.append(format_log_line(ts_ms, records))
 
-                        if len(buf) >= flush_every_n:
-                            f.writelines(buf)
-                            f.flush()
-                            buf.clear()
+                            if len(buf) >= flush_every_n:
+                                f.writelines(buf)
+                                f.flush()
+                                buf.clear()
 
-                        if ENABLE_PUB and pub is not None:
-                            send_pts = [
-                                [
-                                    records[i][3] * RS_SEND_SCALE,
-                                    records[i][4] * RS_SEND_SCALE,
-                                    records[i][5] * RS_SEND_SCALE,
+                            if ENABLE_PUB and pub is not None:
+                                send_pts = [
+                                    [
+                                        records[i][3] * RS_SEND_SCALE,
+                                        records[i][4] * RS_SEND_SCALE,
+                                        records[i][5] * RS_SEND_SCALE,
+                                    ]
+                                    for i in RS_SEND_INDICES
                                 ]
-                                for i in RS_SEND_INDICES
-                            ]
-                            payload = {
-                                "src": "realsense",
-                                "markers": send_pts,
-                                "timestamp": ts_ms,
-                            }
-                            pub.send_multipart(
-                                [PUB_TOPIC, msgpack.packb(payload, use_bin_type=True)]
-                            )
+                                payload = {
+                                    "src": "realsense",
+                                    "markers": send_pts,
+                                    "timestamp": ts_ms,
+                                }
+                                pub.send_multipart(
+                                    [PUB_TOPIC, msgpack.packb(payload, use_bin_type=True)]
+                                )
 
                 cv2.imshow("RealSense Hands (21-point 3D)", output)
 
