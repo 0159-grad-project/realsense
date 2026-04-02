@@ -11,10 +11,10 @@ from mediapipe_hand import HandData, HandRecords, MediaPipeHandDetector
 # ---------------------------------
 # RealSense 深度相机数据记录 + MediaPipe 手部关键点检测
 # 记录 21 个关键点的像素坐标、深度（米）和空间坐标（X,Y,Z）
-# 同时保存 RGB 视频和 .bag 文件
+# 同时保存.bag 文件
 # ---------------------------------
 
-ENABLE_RECORDING = True  # 是否保存视频和 .bag 文件
+ENABLE_SAVING = True  # 是否保存.bag 文件
 ENABLE_PUB = False  # 是否启用 ZeroMQ
 MAX_NUM_HANDS = 2  # 检测手的最大数量（1 或 2）
 
@@ -83,15 +83,12 @@ def _merge_hands(
 
 
 def main():
-    rgb_dir = f"./logs/rgb_videos"
     bag_dir = f"./logs/raw_bags"
 
     date = datetime.now().strftime("%m%d")
     time = datetime.now().strftime("%H%M")
     base_name = f"{date}_{time}"
     log_path = f"./logs/{base_name}_realsense_log.txt"
-    color_video_path = f"{rgb_dir}/{base_name}_color.mp4"
-    # depth_preview_path = f"{rgb_dir}/{base_name}_depth_preview.mp4"
     bag_path = f"{bag_dir}/{base_name}.bag"
 
     # ---------- RealSense ----------
@@ -102,19 +99,11 @@ def main():
     config = rs.config()
     config.enable_stream(rs.stream.color, frame_width, frame_height, rs.format.bgr8, fps)
     config.enable_stream(rs.stream.depth, frame_width, frame_height, rs.format.z16, fps)
-    if ENABLE_RECORDING:
+    if ENABLE_SAVING:
         config.enable_record_to_file(bag_path)
 
     pipeline.start(config)
     align = rs.align(rs.stream.color)
-    colorizer = rs.colorizer()
-
-    frame_size = (frame_width, frame_height)
-    color_writer = None
-    if ENABLE_RECORDING:
-        color_writer = cv2.VideoWriter(
-            color_video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size
-        )
 
     hand_detector = MediaPipeHandDetector(max_num_hands=MAX_NUM_HANDS)
 
@@ -143,13 +132,6 @@ def main():
                     continue
 
                 color_img = np.asanyarray(color_frame.get_data())
-                if color_writer is not None and color_writer.isOpened():
-                    color_writer.write(color_img)
-
-                # depth_color_frame = colorizer.colorize(depth_frame)
-                # depth_colormap = np.asanyarray(depth_color_frame.get_data())
-                # if depth_preview_writer.isOpened():
-                #     depth_preview_writer.write(depth_colormap)
 
                 intr = color_frame.profile.as_video_stream_profile().intrinsics
 
@@ -260,10 +242,6 @@ def main():
                 f.flush()
 
     finally:
-        if color_writer is not None and color_writer.isOpened():
-            color_writer.release()
-        # if depth_preview_writer.isOpened():
-        #     depth_preview_writer.release()
         hand_detector.close()
         pipeline.stop()
         if pub is not None:
