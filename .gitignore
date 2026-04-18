@@ -1,5 +1,7 @@
 logs/
 logs_bag/
 logs_2/
+video/
 .idea/
 __pycache__/
+.codex
